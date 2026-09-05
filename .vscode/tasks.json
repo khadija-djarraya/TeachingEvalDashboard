@@ -7,6 +7,27 @@
 			"command": "mkdir -p site && mv dashboard.html site/index.html && mv app.js style.css teaching_evaluation_consolidated.json ucb_logo.png site/",
 			"isBackground": false,
 			"problemMatcher": []
+		},
+		{
+			"label": "Inspect Git remote state",
+			"type": "shell",
+			"command": "git remote -v && git status --short --branch && git fetch origin && git log --oneline --decorate --graph --all -10",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Compare local and remote commits",
+			"type": "shell",
+			"command": "git status --short --branch && printf '%s\\n' '--- local-only / remote-only ---' && git log --oneline --left-right HEAD...origin/main && printf '%s\\n' '--- recent history ---' && git log --oneline --decorate --graph --all -12 && printf '%s\\n' '--- task file diff ---' && git diff -- .vscode/tasks.json",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Check renamed repository URL",
+			"type": "shell",
+			"command": "git ls-remote --heads https://github.com/khadija-djarraya/TeachingEvalDashboard.git main",
+			"isBackground": false,
+			"problemMatcher": []
 		}
 	]
 }
