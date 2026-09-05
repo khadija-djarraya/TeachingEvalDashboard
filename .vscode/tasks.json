@@ -1,0 +1,12 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Prepare GitHub Pages site",
+			"type": "shell",
+			"command": "mkdir -p site && mv dashboard.html site/index.html && mv app.js style.css teaching_evaluation_consolidated.json ucb_logo.png site/",
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}
