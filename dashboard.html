@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>UCB Teaching Evaluation Dashboard — UKPSF 2020</title>
+<link rel="icon" href="ucb_logo.png">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <img src="ucb_logo.png" alt="University College of Bahrain logo">
+    <div class="brand-div"></div>
+    <div>
+      <div class="instname">University College of Bahrain</div>
+      <h1>Teaching Evaluation Dashboard</h1>
+      <div class="sub">UKPSF 2020 — Areas of Activity (AA) · Core Knowledge (CK) · Professional Values (PV) · 4 semesters, 4 departments</div>
+    </div>
+  </div>
+  <div class="flex">
+    <label style="color:var(--muted);font-size:13px;">Semester:</label>
+    <select id="semesterPicker"></select>
+  </div>
+</header>
+<nav>
+  <button id="tab-inst" class="active">🏛 Institutional / Admin Dashboard</button>
+  <button id="tab-fac">👤 Individual Faculty Dashboard</button>
+</nav>
+<main>
+
+<!-- INSTITUTIONAL DASHBOARD -->
+<div id="view-inst">
+  <div class="summary-box" id="execSummary">Loading…</div>
+  <div class="grid cards" id="instCards"></div>
+
+  <div class="panel">
+    <h2>UKPSF Capability Heatmap — Department × Domain <span class="section-scope">Selected semester</span></h2>
+    <div class="desc">Average score per department per UKPSF domain, for the selected semester. Darker red = further below the 65% improvement threshold.</div>
+    <table class="heat-table" id="heatTable"></table>
+    <div class="heat-legend">
+      <span><span class="heat-swatch" style="background:#7f1d1d"></span>&lt;60</span>
+      <span><span class="heat-swatch" style="background:#b91c1c"></span>60–65</span>
+      <span><span class="heat-swatch" style="background:#b45309"></span>65–75</span>
+      <span><span class="heat-swatch" style="background:#15803d"></span>75–85</span>
+      <span><span class="heat-swatch" style="background:#166534"></span>85+</span>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <h2>Institutional Average Across Semesters <span class="section-scope">All semesters</span></h2>
+      <div class="desc">Mean of all department averages, tracked over the two academic years.</div>
+      <canvas id="instTrendChart" height="230"></canvas>
+    </div>
+    <div class="panel">
+      <h2 id="h2-interdept">Interdepartmental Comparison</h2>
+      <div class="desc" id="interdeptDesc">Overall average by department for the selected semester.</div>
+      <canvas id="deptChart" height="230"></canvas>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Department & Program Trend (semester over semester) <span class="section-scope">All semesters</span></h2>
+    <div class="desc">Every department's average score, tracked across all four semesters.</div>
+    <canvas id="deptTrendChart" height="160"></canvas>
+  </div>
+
+  <div class="panel">
+    <h2 id="h2-progrank">Program Ranking</h2>
+    <table id="progTable"><thead><tr><th>Department</th><th>Program</th><th>Overall</th><th>AA</th><th>CK</th><th>PV</th><th>Trend</th><th>Status</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="panel">
+    <h2>⚠️ Improvement Required — items below 65% <span class="section-scope">Selected semester</span></h2>
+    <div class="desc">Faculty overall scores, program overall scores, and individual survey questions below 65%, for the selected semester.</div>
+    <div class="flex" style="margin-bottom:8px;">
+      <select id="improveDeptFilter"></select>
+    </div>
+    <div id="improveList"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Biggest Movers — Which Survey Items Changed Most (by Program) <span class="section-scope">Earliest vs latest available semester</span></h2>
+    <div class="desc" id="moversDesc">Comparing each survey item's average score between this program's earliest and latest available semester.</div>
+    <div class="flex" style="margin-bottom:12px;">
+      <select id="trackDeptPicker"></select>
+      <select id="trackProgramPicker"></select>
+    </div>
+    <canvas id="trackChart" height="380"></canvas>
+  </div>
+
+  <div class="panel">
+    <h2 id="h2-facdist">Faculty Score Distribution</h2>
+    <canvas id="facDist" height="200"></canvas>
+  </div>
+</div>
+
+<!-- FACULTY DASHBOARD -->
+<div id="view-fac" style="display:none;">
+  <div class="panel">
+    <div class="flex">
+      <label style="color:var(--muted);font-size:13px;">Department:</label>
+      <select id="facDeptPicker"></select>
+      <label style="color:var(--muted);font-size:13px;">Faculty Member:</label>
+      <select id="facultyPicker"></select>
+    </div>
+  </div>
+
+  <div class="grid cards" id="facCards"></div>
+
+  <div class="two-col">
+    <div class="panel">
+      <h2>UKPSF Radar — AA / CK / PV <span class="section-scope">Selected semester</span></h2>
+      <canvas id="facRadar" height="260"></canvas>
+    </div>
+    <div class="panel">
+      <h2>This Instructor's Trend Across Semesters <span class="section-scope">All semesters</span></h2>
+      <canvas id="facTrendChart" height="260"></canvas>
+      <div class="note" id="facTrendNote"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2 id="h2-coursescore">Per-Course Overall Score</h2>
+    <canvas id="facCourseChart" height="220"></canvas>
+  </div>
+
+  <div class="panel">
+    <h2 id="h2-qreport">Full Question-Level Report (UKPSF-mapped)</h2>
+    <table id="facQTable" class="rtl"><thead><tr><th style="text-align:left;direction:ltr;">UKPSF</th><th style="text-align:left;direction:ltr;">Avg %</th><th>Question</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="panel">
+    <h2 id="h2-facimprove">⚠️ This Faculty Member's Improvement Areas (&lt;65%)</h2>
+    <div id="facImprove"></div>
+  </div>
+</div>
+
+</main>
+</body>
+</html>
