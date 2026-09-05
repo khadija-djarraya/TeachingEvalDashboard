@@ -12,7 +12,8 @@ Open `site/index.html` via a local server (see below) — it has two views:
 
 | File | Purpose |
 |---|---|
-| `etl_teaching_evaluation.py` | Documented ETL script: raw `.xlsx` survey exports → consolidated JSON |
+| `etl_teaching_evaluation.py` | Documented ETL script: raw `.xlsx` survey exports and schedule PDFs → consolidated JSON |
+| `requirements.txt` | Python dependencies for running the ETL |
 | `site/teaching_evaluation_consolidated.json` | Output of the ETL — single source of truth for the dashboard |
 | `teaching_evaluation_consolidated.xlsx` | Human-readable Excel export for manual QA |
 | `site/index.html` | Interactive dashboard entry page for local use and GitHub Pages |
@@ -32,8 +33,17 @@ python3 -m http.server 8000
 
 ## Regenerating the data
 
+Install the ETL dependencies first:
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
 ```bash
 python etl_teaching_evaluation.py --input "<path to raw survey folder>" --output site/teaching_evaluation_consolidated.json
 ```
+
+The ETL uses Excel files for evaluation scores and schedule PDFs for optional
+course names and teaching metadata. Duplicate Spring 2021 folders are skipped.
 
 See the docstring at the top of `etl_teaching_evaluation.py` for the full data-handling logic, assumptions, and known limitations.

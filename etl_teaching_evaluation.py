@@ -14,7 +14,7 @@ SOURCE DATA STRUCTURE (as received)
 ------------------------------------
 2 Years Data for Teaching Evaluation Surveys Results/
   Teaching Evaluation Fall 2020/
-    AFS/  staff.xlsx   programme.xlsx   ...pdf timetables (ignored)
+    AFS/  staff.xlsx   programme.xlsx   ...pdf timetables and staff schedules
     CSMIS/  ...
     GFP/  "GFP staff Aisha part 20201.xlsx"  "GFP programme Aisha part 20201.xlsx"
     ID/   "ID staff Aisha part 20201.xlsx"   "ID programme Aisha part 20201.xlsx"
@@ -76,12 +76,11 @@ LIMITATIONS / KNOWN DATA ISSUES (documented, not hidden)
    and "GFP" are the same thing across a rename -- that is a judgement
    call for you to confirm, not something the script should silently
    assume.
-2. This script does NOT attempt to parse the top-level per-course raw
-   files (e.g. `20201.xlsx`, `Evaluation20211.xlsx`) which contain
-   respondent counts ("Eval Students") -- if you want response-rate
-   weighting or n-counts surfaced in the dashboard, that requires a
-   second parser against that different file layout, which is not
-   included here.
+2. This script reads course names from the top-level per-course raw files
+    (e.g. `20201.xlsx`, `Evaluation20211.xlsx`) and timetable PDFs, but does
+    not yet use their respondent counts ("Eval Students") for weighting. If
+    response-rate weighting or n-counts are needed in the dashboard, that
+    requires extending this metadata parser.
 3. The Spring 2021 nested "Teaching Evaluation 20212" folder is a
    duplicate of a subset of the top-level Spring 2021 data. It is
    excluded because the top-level folder is the more complete of the
@@ -109,6 +108,10 @@ teaching_evaluation_consolidated.json, shaped as:
   }
 }
 
+Course summaries include the course code, an overall course score calculated
+from the question scores, and a course name when one is found in the Excel or
+PDF schedule metadata.
+
 USAGE
 -----
     python etl_teaching_evaluation.py \
@@ -119,8 +122,10 @@ USAGE
 import argparse
 import json
 import os
+import re
 
 import openpyxl
+from pypdf import PdfReader
 
 DEPTS = {"AFS", "CSMIS", "GFP", "ID"}
 
@@ -183,10 +188,83 @@ def find_file(folder, kind):
     return partial[0] if partial else None
 
 
-def parse_sheet(ws):
+def find_course_names(folder, excluded_files):
+    """Read optional course-code/title metadata from per-course workbooks."""
+    names = {}
+    for filename in os.listdir(folder):
+        if not filename.lower().endswith(".xlsx") or filename in excluded_files:
+            continue
+        try:
+            wb = openpyxl.load_workbook(os.path.join(folder, filename), data_only=True, read_only=True)
+            for ws in wb.worksheets:
+                metadata = {}
+                for row in ws.iter_rows(min_row=1, max_row=min(ws.max_row, 20), values_only=True):
+                    label = clean(row[1]) if len(row) > 1 else None
+                    value = clean(row[4]) if len(row) > 4 else None
+                    if label in {"Course Code", "Course Name"}:
+                        metadata[label] = value
+                code = metadata.get("Course Code")
+                name = metadata.get("Course Name")
+                if code is not None and name:
+                    names[str(code)] = str(name)
+        except Exception:
+            continue
+    return names
+
+
+def find_pdf_course_names(folder):
+    """Extract course-code/name pairs from timetable and staff-schedule PDFs."""
+    names = {}
+    code_pattern = re.compile(r"^\d{6}\*?$")
+    ignored_lines = {"course course name hrs", "activity", "section time room", "hours / hour", "count"}
+
+    for filename in os.listdir(folder):
+        if not filename.lower().endswith(".pdf"):
+            continue
+        path = os.path.join(folder, filename)
+        try:
+            reader = PdfReader(path)
+            for page in reader.pages:
+                lines = [clean(line) for line in (page.extract_text() or "").splitlines()]
+                lines = [line for line in lines if line]
+                for index, line in enumerate(lines):
+                    if not code_pattern.fullmatch(line):
+                        continue
+                    code_start = index
+                    while code_start > 0 and code_pattern.fullmatch(lines[code_start - 1]):
+                        code_start -= 1
+                    code_end = index + 1
+                    while code_end < len(lines) and code_pattern.fullmatch(lines[code_end]):
+                        code_end += 1
+
+                    codes = [re.sub(r"\*+$", "", value) for value in lines[code_start:code_end]]
+                    if len(codes) < 2:
+                        continue
+
+                    candidates = []
+                    for previous in reversed(lines[:code_start]):
+                        lowered = previous.lower()
+                        if lowered in ignored_lines or not re.search(r"[A-Za-z]", previous):
+                            continue
+                        if re.search(r"page\s+\d+|instructor schedule|timetable|faculty|department|semester", lowered):
+                            continue
+                        candidates.append(previous)
+                        if len(candidates) == len(codes):
+                            break
+
+                    if len(candidates) == len(codes):
+                        for code, name in zip(codes, reversed(candidates)):
+                            names.setdefault(code, name)
+        except Exception:
+            continue
+    return names
+
+
+def parse_sheet(ws, course_names=None):
     """
     Parse one instructor/program sheet into:
-      {"courses": [<course codes in column order>],
+            {"courses": [<course codes in column order>],
+             "course_summary": [{"name": <course code>, "overall": <score>}, ...],
        "questions": [{category, subcode, seq, text, scores:{course:score}, avg}, ...]}
     """
     header = [clean(ws.cell(row=1, column=c).value) for c in range(1, ws.max_column + 1)]
@@ -233,7 +311,23 @@ def parse_sheet(ws):
             )
         r += 1
 
-    return {"courses": [str(c) for _, c in course_cols], "questions": questions}
+    course_names = course_names or {}
+    course_summary = []
+    for _, code in course_cols:
+        course_code = str(code)
+        scores = [q["scores"][course_code] for q in questions if q["scores"].get(course_code) is not None]
+        if scores:
+            course_summary.append({
+                "code": course_code,
+                "name": course_names.get(course_code, course_code),
+                "overall": round(sum(scores) / len(scores), 2),
+            })
+
+    return {
+        "courses": [str(c) for _, c in course_cols],
+        "course_summary": course_summary,
+        "questions": questions,
+    }
 
 
 def overall_avg(parsed_sheet):
@@ -288,6 +382,8 @@ def build_dataset(input_root):
 
         staff_file = find_file(folder, "staff")
         prog_file = find_file(folder, "programme")
+        course_names = find_course_names(folder, {f for f in (staff_file, prog_file) if f})
+        course_names.update(find_pdf_course_names(folder))
 
         dept_entry = {
             "instructors": {},
@@ -301,7 +397,7 @@ def build_dataset(input_root):
             try:
                 wb = openpyxl.load_workbook(os.path.join(folder, staff_file), data_only=True)
                 for sheet_name in wb.sheetnames:
-                    parsed = parse_sheet(wb[sheet_name])
+                    parsed = parse_sheet(wb[sheet_name], course_names)
                     if parsed["questions"]:
                         dept_entry["instructors"][clean(sheet_name)] = parsed
                         if question_reference is None:
@@ -322,7 +418,7 @@ def build_dataset(input_root):
                 for sheet_name in wb.sheetnames:
                     if sheet_name in skip_sheets:
                         continue
-                    parsed = parse_sheet(wb[sheet_name])
+                    parsed = parse_sheet(wb[sheet_name], course_names)
                     if parsed["questions"]:
                         dept_entry["programs"][clean(sheet_name)] = parsed
             except Exception as exc:  # noqa: BLE001
@@ -340,7 +436,7 @@ def build_dataset(input_root):
                 "AA": category_avg(sheet, "AA"),
                 "CK": category_avg(sheet, "CK"),
                 "PV": category_avg(sheet, "PV"),
-                "courses": sheet["courses"],
+                "courses": sheet["course_summary"],
             })
 
         for name, sheet in dept_entry["programs"].items():
